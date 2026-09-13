@@ -38,7 +38,15 @@ something generic — proactively suggest a sensible, healthy direction and \
 say what goal you optimized for and why.
 - Prefer whole, minimally processed ingredients and realistic home-cooking \
 steps.
-- Nutrition numbers and prep time are estimates — be reasonable and \
+
+Users may also give optional preferences:
+- Servings needed: scale ingredient quantities to match exactly. If not \
+given, pick whatever serving count is most natural for the dish and report \
+it.
+- Cuisine preference: lean into that cuisine's typical flavors, spices, and \
+techniques for the dish.
+
+Nutrition numbers and prep time are estimates — be reasonable and \
 consistent, not overly precise.
 """
 
@@ -55,6 +63,10 @@ RECIPE_SCHEMA = {
         "prep_time_minutes": {
             "type": "integer",
             "description": "Estimated total time to prepare and cook, in minutes.",
+        },
+        "servings": {
+            "type": "integer",
+            "description": "Number of servings this recipe makes.",
         },
         "nutrition": {
             "type": "object",
@@ -78,6 +90,7 @@ RECIPE_SCHEMA = {
         "ingredients",
         "steps",
         "prep_time_minutes",
+        "servings",
         "nutrition",
         "notes",
     ],
@@ -92,6 +105,7 @@ class RecipeSuggestion:
     ingredients: list[str]
     steps: list[str]
     prep_time_minutes: int
+    servings: int
     calories_kcal: float
     protein_g: float
     carbs_g: float
@@ -122,6 +136,7 @@ def _parse(raw_text: str) -> RecipeSuggestion:
             ingredients=data["ingredients"],
             steps=data["steps"],
             prep_time_minutes=data["prep_time_minutes"],
+            servings=data["servings"],
             calories_kcal=nutrition["calories_kcal"],
             protein_g=nutrition["protein_g"],
             carbs_g=nutrition["carbs_g"],
@@ -135,9 +150,13 @@ def _parse(raw_text: str) -> RecipeSuggestion:
 
 
 async def generate_recipe(
-    ingredients: str, request_text: str, goal: str
+    ingredients: str,
+    request_text: str,
+    goal: str,
+    servings: str = "",
+    cuisine: str = "",
 ) -> RecipeSuggestion:
-    """Ask the model for a recipe from any mix of ingredients/request/goal."""
+    """Ask the model for a recipe from any mix of ingredients/request/preferences."""
     parts = []
     if ingredients.strip():
         parts.append(f"Ingredients on hand: {ingredients.strip()}")
@@ -145,11 +164,15 @@ async def generate_recipe(
         parts.append(f"Open request: {request_text.strip()}")
     if goal.strip():
         parts.append(f"Nutrition goal: {goal.strip()}")
+    if servings.strip():
+        parts.append(f"Servings needed: {servings.strip()}")
+    if cuisine.strip():
+        parts.append(f"Cuisine preference: {cuisine.strip()}")
 
     if not parts:
         raise RecipeGenerationError(
             "Tell me at least one thing: your ingredients, what you're "
-            "craving, or a nutrition goal."
+            "craving, or a preference."
         )
 
     client = _client()

@@ -32,6 +32,7 @@ class Recipe(SQLModel, table=True):
     ingredients: list[str] = Field(sa_column=Column(JSON))
     steps: list[str] = Field(sa_column=Column(JSON))
     prep_time_minutes: int = 0
+    servings: int = 0
     calories_kcal: float = 0
     protein_g: float = 0
     carbs_g: float = 0

@@ -28,6 +28,8 @@ class RecipeState(rx.State):
     ingredients: str = ""
     request_text: str = ""
     goal: str = ""
+    servings: str = ""
+    cuisine: str = ""
     is_loading: bool = False
     error: str = ""
     save_confirmation: str = ""
@@ -39,6 +41,7 @@ class RecipeState(rx.State):
     recipe_ingredients: list[str] = []
     recipe_steps: list[str] = []
     recipe_prep_time: int = 0
+    recipe_servings: int = 0
     recipe_calories: float = 0
     recipe_protein: float = 0
     recipe_carbs: float = 0
@@ -57,6 +60,12 @@ class RecipeState(rx.State):
     def set_goal(self, value: str):
         self.goal = value
 
+    def set_servings(self, value: str):
+        self.servings = value
+
+    def set_cuisine(self, value: str):
+        self.cuisine = value
+
     @rx.event(background=True)
     async def generate(self):
         async with self:
@@ -68,15 +77,20 @@ class RecipeState(rx.State):
             ingredients = self.ingredients
             request_text = self.request_text
             goal = self.goal
+            servings = self.servings
+            cuisine = self.cuisine
 
         try:
-            suggestion = await generate_recipe(ingredients, request_text, goal)
+            suggestion = await generate_recipe(
+                ingredients, request_text, goal, servings, cuisine
+            )
             async with self:
                 self.recipe_title = suggestion.title
                 self.recipe_goal_summary = suggestion.goal_summary
                 self.recipe_ingredients = suggestion.ingredients
                 self.recipe_steps = suggestion.steps
                 self.recipe_prep_time = suggestion.prep_time_minutes
+                self.recipe_servings = suggestion.servings
                 self.recipe_calories = suggestion.calories_kcal
                 self.recipe_protein = suggestion.protein_g
                 self.recipe_carbs = suggestion.carbs_g
@@ -94,6 +108,8 @@ class RecipeState(rx.State):
         self.ingredients = ""
         self.request_text = ""
         self.goal = ""
+        self.servings = ""
+        self.cuisine = ""
         self.error = ""
         self.save_confirmation = ""
         self.has_recipe = False
@@ -136,6 +152,7 @@ class RecipeState(rx.State):
             ingredients=self.recipe_ingredients,
             steps=self.recipe_steps,
             prep_time_minutes=self.recipe_prep_time,
+            servings=self.recipe_servings,
             calories_kcal=self.recipe_calories,
             protein_g=self.recipe_protein,
             carbs_g=self.recipe_carbs,
@@ -195,6 +212,7 @@ def recipe_card() -> rx.Component:
                 ),
                 rx.hstack(
                     rx.badge(f"{RecipeState.recipe_prep_time} min prep"),
+                    rx.badge(f"Serves {RecipeState.recipe_servings}"),
                     rx.badge(f"{RecipeState.recipe_calories} kcal"),
                     rx.badge(f"{RecipeState.recipe_protein} g protein"),
                     rx.badge(f"{RecipeState.recipe_carbs} g carbs"),
@@ -247,7 +265,13 @@ def index() -> rx.Component:
         rx.vstack(
             rx.heading("re-fit", size="9", font_family=DISPLAY_FONT),
             rx.text(
-                "Tell me what you have and what you're aiming for.",
+                "Your AI nutritionist — a recipe built around what you have "
+                "and what you need.",
+                size="4",
+            ),
+            rx.text(
+                "Start with your ingredients, a craving, or a goal below.",
+                size="2",
                 color="gray",
             ),
             rx.text_area(
@@ -266,11 +290,30 @@ def index() -> rx.Component:
                 on_change=RecipeState.set_request_text,
                 width="100%",
             ),
-            rx.text("or", size="1", color="gray", align_self="center"),
+            rx.text(
+                "Preferences",
+                size="2",
+                weight="medium",
+                color="gray",
+                align_self="start",
+                margin_top="0.5em",
+            ),
             rx.input(
                 placeholder="Nutrition goal (optional) — e.g. high-protein lunch",
                 value=RecipeState.goal,
                 on_change=RecipeState.set_goal,
+                width="100%",
+            ),
+            rx.input(
+                placeholder="Servings (optional) — e.g. 2",
+                value=RecipeState.servings,
+                on_change=RecipeState.set_servings,
+                width="100%",
+            ),
+            rx.input(
+                placeholder="Cuisine (optional) — e.g. Turkish, Thai, Italian",
+                value=RecipeState.cuisine,
+                on_change=RecipeState.set_cuisine,
                 width="100%",
             ),
             rx.button(
