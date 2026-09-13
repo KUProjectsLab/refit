@@ -1,8 +1,8 @@
-# Refit
+# re-fit
 
-Refit is an AI nutritionist for your kitchen. Tell it what ingredients you have and what you're aiming for — "high-protein lunch," "under 500 kcal," or nothing specific at all — and it generates a recipe tailored to that goal, with estimated calories, protein, carbs, and fat. Generated recipes can be logged to track what you've actually eaten.
+re-fit is an AI nutritionist for your kitchen. Tell it what ingredients you have and what you're aiming for — "high-protein lunch," "under 500 kcal," or nothing specific at all — and it generates a recipe tailored to that goal, with estimated calories, protein, carbs, and fat. Generated recipes can be logged to track what you've actually eaten.
 
-Unlike typical calorie counters that only log food after the fact, Refit helps you decide what to cook *before* you cook it, based on what's already in your kitchen and what you're trying to achieve nutritionally.
+Unlike typical calorie counters that only log food after the fact, re-fit helps you decide what to cook *before* you cook it, based on what's already in your kitchen and what you're trying to achieve nutritionally.
 
 ## Status
 
