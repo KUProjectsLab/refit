@@ -31,12 +31,14 @@ class Recipe(SQLModel, table=True):
     goal_summary: str = ""
     ingredients: list[str] = Field(sa_column=Column(JSON))
     steps: list[str] = Field(sa_column=Column(JSON))
+    prep_time_minutes: int = 0
     calories_kcal: float = 0
     protein_g: float = 0
     carbs_g: float = 0
     fat_g: float = 0
     notes: str = ""
     source: str = "ai_generated"  # "ai_generated" | "manual"
+    is_saved: bool = False
     created_at: datetime = Field(default_factory=_utcnow)
 
 

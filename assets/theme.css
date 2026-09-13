@@ -1,0 +1,5 @@
+/* Radix Themes' default dark-mode background (gray-1) is near-black.
+   Soften it to a warmer, lighter charcoal for a more premium feel. */
+.radix-themes.dark {
+  --color-background: #1e1c19 !important;
+}
