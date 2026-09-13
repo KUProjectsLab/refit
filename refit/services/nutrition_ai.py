@@ -48,6 +48,15 @@ techniques for the dish.
 
 Nutrition numbers and prep time are estimates — be reasonable and \
 consistent, not overly precise.
+
+Sometimes the user will send a follow-up about the recipe you just gave \
+them — e.g. they don't have an ingredient, want a substitution, want it \
+spicier, or want some other tweak. In that case, revise the existing \
+recipe to address the request (swap the one ingredient, adjust the \
+step/quantities/nutrition accordingly, etc.) rather than inventing an \
+unrelated dish, unless what they're asking for genuinely requires starting \
+over. Keep everything else about the recipe the same unless the change \
+affects it.
 """
 
 RECIPE_SCHEMA = {
@@ -149,14 +158,29 @@ def _parse(raw_text: str) -> RecipeSuggestion:
         ) from exc
 
 
+def _schema_format() -> dict:
+    return {
+        "format": {
+            "type": "json_schema",
+            "name": "recipe",
+            "schema": RECIPE_SCHEMA,
+            "strict": True,
+        }
+    }
+
+
 async def generate_recipe(
     ingredients: str,
     request_text: str,
     goal: str,
     servings: str = "",
     cuisine: str = "",
-) -> RecipeSuggestion:
-    """Ask the model for a recipe from any mix of ingredients/request/preferences."""
+) -> tuple[RecipeSuggestion, str]:
+    """Ask the model for a recipe from any mix of ingredients/request/preferences.
+
+    Returns the recipe plus the OpenAI response id, which can be passed to
+    `refine_recipe` to continue this same conversation.
+    """
     parts = []
     if ingredients.strip():
         parts.append(f"Ingredients on hand: {ingredients.strip()}")
@@ -180,13 +204,24 @@ async def generate_recipe(
         model=MODEL,
         instructions=SYSTEM_PROMPT,
         input="\n".join(parts),
-        text={
-            "format": {
-                "type": "json_schema",
-                "name": "recipe",
-                "schema": RECIPE_SCHEMA,
-                "strict": True,
-            }
-        },
+        text=_schema_format(),
     )
-    return _parse(response.output_text)
+    return _parse(response.output_text), response.id
+
+
+async def refine_recipe(
+    follow_up: str, previous_response_id: str
+) -> tuple[RecipeSuggestion, str]:
+    """Revise the previously generated recipe based on a follow-up request."""
+    if not follow_up.strip():
+        raise RecipeGenerationError("Tell me what you'd like to change.")
+
+    client = _client()
+    response = await client.responses.create(
+        model=MODEL,
+        instructions=SYSTEM_PROMPT,
+        input=follow_up.strip(),
+        previous_response_id=previous_response_id,
+        text=_schema_format(),
+    )
+    return _parse(response.output_text), response.id

@@ -5,7 +5,11 @@ from sqlmodel import select
 
 from refit.db import create_db_and_tables, get_or_create_default_user, get_session
 from refit.models import MealLog, Recipe
-from refit.services.nutrition_ai import RecipeGenerationError, generate_recipe
+from refit.services.nutrition_ai import (
+    RecipeGenerationError,
+    generate_recipe,
+    refine_recipe,
+)
 
 try:
     create_db_and_tables()
@@ -36,6 +40,8 @@ class RecipeState(rx.State):
 
     has_recipe: bool = False
     current_recipe_id: int | None = None
+    last_response_id: str | None = None
+    follow_up_text: str = ""
     recipe_title: str = ""
     recipe_goal_summary: str = ""
     recipe_ingredients: list[str] = []
@@ -66,6 +72,9 @@ class RecipeState(rx.State):
     def set_cuisine(self, value: str):
         self.cuisine = value
 
+    def set_follow_up_text(self, value: str):
+        self.follow_up_text = value
+
     @rx.event(background=True)
     async def generate(self):
         async with self:
@@ -73,6 +82,8 @@ class RecipeState(rx.State):
             self.error = ""
             self.has_recipe = False
             self.current_recipe_id = None
+            self.last_response_id = None
+            self.follow_up_text = ""
             self.save_confirmation = ""
             ingredients = self.ingredients
             request_text = self.request_text
@@ -81,21 +92,12 @@ class RecipeState(rx.State):
             cuisine = self.cuisine
 
         try:
-            suggestion = await generate_recipe(
+            suggestion, response_id = await generate_recipe(
                 ingredients, request_text, goal, servings, cuisine
             )
             async with self:
-                self.recipe_title = suggestion.title
-                self.recipe_goal_summary = suggestion.goal_summary
-                self.recipe_ingredients = suggestion.ingredients
-                self.recipe_steps = suggestion.steps
-                self.recipe_prep_time = suggestion.prep_time_minutes
-                self.recipe_servings = suggestion.servings
-                self.recipe_calories = suggestion.calories_kcal
-                self.recipe_protein = suggestion.protein_g
-                self.recipe_carbs = suggestion.carbs_g
-                self.recipe_fat = suggestion.fat_g
-                self.recipe_notes = suggestion.notes
+                self._apply_suggestion(suggestion)
+                self.last_response_id = response_id
                 self.has_recipe = True
         except RecipeGenerationError as exc:
             async with self:
@@ -103,6 +105,48 @@ class RecipeState(rx.State):
         finally:
             async with self:
                 self.is_loading = False
+
+    @rx.event(background=True)
+    async def refine(self):
+        async with self:
+            if not self.has_recipe or self.last_response_id is None:
+                return
+            self.is_loading = True
+            self.error = ""
+            follow_up_text = self.follow_up_text
+            previous_response_id = self.last_response_id
+
+        try:
+            suggestion, response_id = await refine_recipe(
+                follow_up_text, previous_response_id
+            )
+            async with self:
+                self._apply_suggestion(suggestion)
+                self.last_response_id = response_id
+                # A revised recipe is a new version -- logging/saving after
+                # this creates a fresh row rather than overwriting history.
+                self.current_recipe_id = None
+                self.save_confirmation = ""
+                self.follow_up_text = ""
+        except RecipeGenerationError as exc:
+            async with self:
+                self.error = str(exc)
+        finally:
+            async with self:
+                self.is_loading = False
+
+    def _apply_suggestion(self, suggestion):
+        self.recipe_title = suggestion.title
+        self.recipe_goal_summary = suggestion.goal_summary
+        self.recipe_ingredients = suggestion.ingredients
+        self.recipe_steps = suggestion.steps
+        self.recipe_prep_time = suggestion.prep_time_minutes
+        self.recipe_servings = suggestion.servings
+        self.recipe_calories = suggestion.calories_kcal
+        self.recipe_protein = suggestion.protein_g
+        self.recipe_carbs = suggestion.carbs_g
+        self.recipe_fat = suggestion.fat_g
+        self.recipe_notes = suggestion.notes
 
     def start_over(self):
         self.ingredients = ""
@@ -114,6 +158,8 @@ class RecipeState(rx.State):
         self.save_confirmation = ""
         self.has_recipe = False
         self.current_recipe_id = None
+        self.last_response_id = None
+        self.follow_up_text = ""
 
     def load_history(self):
         with get_session() as session:
@@ -222,6 +268,28 @@ def recipe_card() -> rx.Component:
                 rx.cond(
                     RecipeState.recipe_notes,
                     rx.text(RecipeState.recipe_notes, font_style="italic"),
+                ),
+                rx.text(
+                    "Missing an ingredient? Want something different?",
+                    size="2",
+                    weight="medium",
+                    color="gray",
+                ),
+                rx.text_area(
+                    placeholder=(
+                        'e.g. "No paprika, what can I use instead?" or '
+                        '"make it spicier"'
+                    ),
+                    value=RecipeState.follow_up_text,
+                    on_change=RecipeState.set_follow_up_text,
+                    width="100%",
+                ),
+                rx.button(
+                    rx.cond(RecipeState.is_loading, "Updating...", "Update recipe"),
+                    on_click=RecipeState.refine,
+                    loading=RecipeState.is_loading,
+                    variant="soft",
+                    width="100%",
                 ),
                 rx.hstack(
                     rx.button(
