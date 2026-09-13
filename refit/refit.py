@@ -1,8 +1,16 @@
 """Refit: an AI nutritionist that turns what's in your kitchen into a recipe."""
 
 import reflex as rx
+from sqlmodel import select
 
+from refit.db import create_db_and_tables, get_or_create_default_user, get_session
+from refit.models import MealLog, Recipe
 from refit.services.nutrition_ai import RecipeGenerationError, generate_recipe
+
+try:
+    create_db_and_tables()
+except RuntimeError as exc:
+    print(f"[refit] Skipping DB setup: {exc}")
 
 
 class RecipeState(rx.State):
@@ -61,13 +69,44 @@ class RecipeState(rx.State):
             async with self:
                 self.is_loading = False
 
+    def load_logged_meals(self):
+        with get_session() as session:
+            user = get_or_create_default_user(session)
+            rows = session.exec(
+                select(MealLog, Recipe)
+                .join(Recipe, MealLog.recipe_id == Recipe.id)
+                .where(MealLog.user_id == user.id)
+                .order_by(MealLog.logged_at.desc())
+            ).all()
+            self.logged_meals = [
+                f"{recipe.title} — {recipe.calories_kcal:g} kcal, "
+                f"{recipe.protein_g:g} g protein"
+                for _meal_log, recipe in rows
+            ]
+
     def log_meal(self):
-        if self.has_recipe:
-            summary = (
-                f"{self.recipe_title} — {self.recipe_calories:g} kcal, "
-                f"{self.recipe_protein:g} g protein"
+        if not self.has_recipe:
+            return
+        with get_session() as session:
+            user = get_or_create_default_user(session)
+            recipe = Recipe(
+                created_by_id=user.id,
+                title=self.recipe_title,
+                goal_summary=self.recipe_goal_summary,
+                ingredients=self.recipe_ingredients,
+                steps=self.recipe_steps,
+                calories_kcal=self.recipe_calories,
+                protein_g=self.recipe_protein,
+                carbs_g=self.recipe_carbs,
+                fat_g=self.recipe_fat,
+                notes=self.recipe_notes,
             )
-            self.logged_meals = [*self.logged_meals, summary]
+            session.add(recipe)
+            session.commit()
+            session.refresh(recipe)
+            session.add(MealLog(user_id=user.id, recipe_id=recipe.id))
+            session.commit()
+        self.load_logged_meals()
 
 
 def recipe_card() -> rx.Component:
@@ -168,4 +207,4 @@ def index() -> rx.Component:
 
 
 app = rx.App()
-app.add_page(index, title="Refit")
+app.add_page(index, title="Refit", on_load=RecipeState.load_logged_meals)
